@@ -38,7 +38,14 @@ def yahoo_response():
                 elif ygError is not None:
                     json['ygError'] = ygError
 
-            rsps.add(method=method, url='https://groups.yahoo.com/api/%s' % endpoint, json=json, status=status, **kwargs)
+            rsps.add(
+                method=method,
+                url=f'https://groups.yahoo.com/api/{endpoint}',
+                json=json,
+                status=status,
+                **kwargs,
+            )
+
             return rsps
 
         yield add_yahoo_reponse
