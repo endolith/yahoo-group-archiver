@@ -93,7 +93,7 @@ class YahooGroupsAPI:
         if cookie_jar:
             self.s.cookies = cookie_jar
         self.s.headers = {'Referer': self.BASE_URI}
-        self.s.headers.update(headers)
+        self.s.headers |= headers
 
     def set_warc_writer(self, ww):
         if ww is not None and warcio_failed:
@@ -116,8 +116,7 @@ class YahooGroupsAPI:
         """Calculate backoff time from minimum delay and attempt number.
            Currently no good reason for choice of backoff, except not to increase too rapidly."""
         base = 2
-        if attempt > 8:
-            attempt = 8
+        attempt = min(attempt, 8)
         return self.min_delay*base**attempt+random.uniform(0, self.min_delay*base**attempt)
 
     def download_file(self, url, f=None, **args):
@@ -126,7 +125,7 @@ class YahooGroupsAPI:
 
             for attempt in range(self.retries):
                 r = self.s.get(url, verify=VERIFY_HTTPS, **args)
-                if r.status_code == 400 or r.status_code == 500:
+                if r.status_code in [400, 500]:
                     if r.status_code == 400 and 'malware' in r.text:
                         self.logger.warning("Got 400 error indicating malware for %s, skipping", url)
                         break
@@ -160,7 +159,7 @@ class YahooGroupsAPI:
         """Get an arbitrary endpoint and parse as json"""
         with self.http_context(self.ww):
             uri_parts = [self.BASE_URI, self.API_VERSIONS[target], 'groups', self.group, target]
-            uri_parts = uri_parts + list(map(str, parts))
+            uri_parts += list(map(str, parts))
 
             if target == 'HackGroupInfo':
                 uri_parts[4] = ''
@@ -175,7 +174,7 @@ class YahooGroupsAPI:
                     code = r.status_code
                     if code == 307:
                         raise Recoverable() # NotAuthenticated()
-                    elif code == 401 or code == 403:
+                    elif code in [401, 403]:
                         raise Unauthorized()
                     elif code == 404:
                         raise NotFound()
@@ -190,10 +189,8 @@ class YahooGroupsAPI:
                     self.logger.info("API query failed for '%s': %s", uri, e)
                     self.logger.debug("Exception detail:", exc_info=e)
 
-                    if attempt < self.retries - 1:
-                        delay = self.backoff_time(attempt)
-                        self.logger.info("Attempt %d/%d failed, delaying for %.2f seconds", attempt+1, self.retries, delay)
-                        time.sleep(delay)
-                        continue
-                    else:
+                    if attempt >= self.retries - 1:
                         raise
+                    delay = self.backoff_time(attempt)
+                    self.logger.info("Attempt %d/%d failed, delaying for %.2f seconds", attempt+1, self.retries, delay)
+                    time.sleep(delay)
